@@ -667,10 +667,10 @@ extension ChildProcess where Stdout == PipeOutputDestination {
     public func waitWithOutput() throws -> ProcessOutput {
         try self.closePipedStdin()
 
-        self.stdout.readToEnd()
+        let bugStdoutData = self.stdout.readToEnd()
         self.process.waitUntilExit()
 
-        return try self.createProcessOutput().get()
+        return try self.createProcessOutput(bugStdoutData: bugStdoutData).get()
     }
 
     /// Simultaneously waits for the child process to exit and collects all
