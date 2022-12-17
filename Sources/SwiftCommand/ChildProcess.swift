@@ -710,11 +710,20 @@ extension ChildProcess where Stdout == PipeOutputDestination {
         }
     }
 
-    private func createProcessOutput() -> Result<ProcessOutput, Error> {
+  private func createProcessOutput(bugStdoutData: Data? = nil) -> Result<ProcessOutput, Error> {
         self.createExitStatus()
             .flatMap { status in
                 let stdoutData = self.stdoutPipe!.fileHandleForReading
                                                  .availableData
+
+              let bugStdout: String
+                if let bugStdoutData = bugStdoutData,
+                   let stdout = String(data: bugStdoutData, encoding: .utf8) {
+                  bugStdout = stdout
+                } else {
+                  bugStdout = ""
+                }
+
                 guard let stdout = String(
                     data: stdoutData,
                     encoding: .utf8
@@ -730,7 +739,7 @@ extension ChildProcess where Stdout == PipeOutputDestination {
 
                 return .success(.init(
                     status: status,
-                    stdout: stdout,
+                    stdout: bugStdout + stdout,
                     stderr: stderr
                 ))
             }
