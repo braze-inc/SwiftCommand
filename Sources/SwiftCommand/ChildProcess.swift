@@ -667,7 +667,7 @@ extension ChildProcess where Stdout == PipeOutputDestination {
     public func waitWithOutput() throws -> ProcessOutput {
         try self.closePipedStdin()
 
-        self.stdoutPipe?.fileHandleForReading.readDataToEndOfFile()
+        self.stdout.readToEnd()
         self.process.waitUntilExit()
 
         return try self.createProcessOutput().get()
