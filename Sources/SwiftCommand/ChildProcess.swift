@@ -713,7 +713,7 @@ extension ChildProcess where Stdout == PipeOutputDestination {
         self.createExitStatus()
             .flatMap { status in
                 let stdoutData = self.stdoutPipe!.fileHandleForReading
-                                                 .availableData
+                                                 .readDataToEndOfFile()
                 guard let stdout = String(
                     data: stdoutData,
                     encoding: .utf8
@@ -722,7 +722,7 @@ extension ChildProcess where Stdout == PipeOutputDestination {
                 }
 
                 let stderrData = self.stderrPipe?.fileHandleForReading
-                                                 .availableData
+                                                 .readDataToEndOfFile()
                 let stderr = stderrData.flatMap {
                     String(data: $0, encoding: .utf8)
                 }
