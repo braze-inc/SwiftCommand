@@ -666,10 +666,16 @@ extension ChildProcess where Stdout == PipeOutputDestination {
     /// - Returns: The collected output of the child process.
     public func waitWithOutput() throws -> ProcessOutput {
         try self.closePipedStdin()
-        
+
+        // Pipes must be read before calling `waitUntilExit()`, otherwise the process can hang
+        // if the buffers are full.
+        // See: https://stackoverflow.com/a/39281558
+        let stdoutData = self.stdoutPipe!.fileHandleForReading.readDataToEndOfFile()
+        let stderrData = self.stderrPipe?.fileHandleForReading.readDataToEndOfFile()
+
         self.process.waitUntilExit()
 
-        return try self.createProcessOutput().get()
+        return try self.createProcessOutput(stdoutData: stdoutData, stderrData: stderrData).get()
     }
 
     /// Simultaneously waits for the child process to exit and collects all
@@ -709,11 +715,14 @@ extension ChildProcess where Stdout == PipeOutputDestination {
         }
     }
 
-    private func createProcessOutput() -> Result<ProcessOutput, Error> {
+    private func createProcessOutput(
+        stdoutData: Data? = nil,
+        stderrData: Data? = nil
+    ) -> Result<ProcessOutput, Error> {
         self.createExitStatus()
             .flatMap { status in
-                let stdoutData = self.stdoutPipe!.fileHandleForReading
-                                                 .readDataToEndOfFile()
+                let stdoutData = stdoutData
+                    ?? self.stdoutPipe!.fileHandleForReading.readDataToEndOfFile()
                 guard let stdout = String(
                     data: stdoutData,
                     encoding: .utf8
@@ -721,8 +730,8 @@ extension ChildProcess where Stdout == PipeOutputDestination {
                     return .failure(Error.couldNotDecodeOutput)
                 }
 
-                let stderrData = self.stderrPipe?.fileHandleForReading
-                                                 .readDataToEndOfFile()
+                let stderrData = stderrData
+                ?? self.stderrPipe?.fileHandleForReading.readDataToEndOfFile()
                 let stderr = stderrData.flatMap {
                     String(data: $0, encoding: .utf8)
                 }
