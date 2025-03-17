@@ -854,9 +854,15 @@ extension ChildProcess where Stdout == PipeOutputDestination {
     public func waitWithOutput() throws -> ProcessOutput {
         try self.closePipedStdin()
 
+        let (stdoutData, stderrData) = self.readOutputToEnd()
         self.process.waitUntilExit()
 
-        return try self.createProcessOutput().get()
+        return
+            try self.createProcessOutput(
+                stdoutData: stdoutData,
+                stderrData: stderrData
+            )
+            .get()
     }
 
     /// Simultaneously waits for the child process to exit and collects all
@@ -878,29 +884,41 @@ extension ChildProcess where Stdout == PipeOutputDestination {
     public var output: ProcessOutput {
         get async throws {
             try self.closePipedStdin()
+            let (stdoutData, stderrData) = await self.readOutputToEnd()
 
             return try await withCheckedThrowingContinuation { continuation in
                 if self.process.isRunning {
                     self.process.terminationHandler = { [weak self] _ in
                         if let self = self {
                             continuation
-                                .resume(with: self.createProcessOutput())
+                                .resume(
+                                    with: self.createProcessOutput(
+                                        stdoutData: stdoutData,
+                                        stderrData: stderrData
+                                    )
+                                )
                         } else {
                             fatalError()
                         }
                     }
                 } else {
-                    continuation.resume(with: self.createProcessOutput())
+                    continuation.resume(
+                        with: self.createProcessOutput(
+                            stdoutData: stdoutData,
+                            stderrData: stderrData
+                        )
+                    )
                 }
             }
         }
     }
 
-    private func createProcessOutput() -> Result<ProcessOutput, Error> {
+    private func createProcessOutput(
+        stdoutData: Data,
+        stderrData: Data?
+    ) -> Result<ProcessOutput, Error> {
         self.createExitStatus()
             .flatMap { status in
-                let stdoutData = self.stdoutPipe!.fileHandleForReading
-                    .availableData
                 guard
                     let stdout = String(
                         data: stdoutData,
@@ -910,10 +928,6 @@ extension ChildProcess where Stdout == PipeOutputDestination {
                     return .failure(Error.couldNotDecodeOutput)
                 }
 
-                let stderrData = self
-                    .stderrPipe?
-                    .fileHandleForReading
-                    .availableData
                 let stderr = stderrData.flatMap {
                     String(data: $0, encoding: .utf8)
                 }
@@ -928,6 +942,24 @@ extension ChildProcess where Stdout == PipeOutputDestination {
                     )
                 )
             }
+    }
+
+    /// When the pipe buffer is full, it prevents the program from exiting until all its data is
+    /// read.
+    private func readOutputToEnd() -> (stdoutData: Data, stderrData: Data?) {
+        let stdoutData = self.stdoutPipe!.fileHandleForReading
+            .readDataToEndOfFile()
+        let stderrData = self.stderrPipe?.fileHandleForReading
+            .readDataToEndOfFile()
+        return (stdoutData, stderrData)
+    }
+
+  /// When the pipe buffer is full, it prevents the program from exiting until all its data is
+  /// read.
+    private func readOutputToEnd() async -> (
+        stdoutData: Data, stderrData: Data?
+    ) {
+        await Task { self.readOutputToEnd() }.value
     }
 }
 

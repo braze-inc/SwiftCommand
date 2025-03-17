@@ -261,4 +261,31 @@ final class SwiftCommandTests: XCTestCase {
             XCTAssertTrue(lines.contains("stdout: \(line)"))
         }
     }
+
+    func testReadFullOutputBeforeWait() async throws {
+        let byteCount = 1 << 20
+        func process() -> Command<
+            UnspecifiedInputSource, UnspecifiedOutputDestination,
+            UnspecifiedOutputDestination
+        > {
+            Command.findInPath(withName: "bash")!
+                .addArgument("-c")
+                .addArgument("head -c \(byteCount) /dev/random | hexdump -C")
+        }
+
+        let syncExpectation = expectation(description: "Synchronous output reading")
+        let asyncExpectation = expectation(description: "Asynchronous output reading")
+        // These will hang undefinitely if the output is not read before awaiting the process
+        // termination.
+        Task {
+          _ = try process().waitForOutput()
+          syncExpectation.fulfill()
+        }
+        Task {
+          _ = try await process().output
+          asyncExpectation.fulfill()
+        }
+        
+        await fulfillment(of: [syncExpectation, asyncExpectation], timeout: 2)
+    }
 }
